@@ -431,9 +431,67 @@ finaliseCap_ret_t Arch_finaliseCap(cap_t cap, bool_t final)
 -   @tsewell had some half-thoughts many years ago regarding a limited form
     of kernel allocator for these paging structures.
 
+    Thoughts, from me:
+      - Allocator is somewhat like the (prior art's) slab allocation / vma metadata
+      - Having smaller pointers allows us to store enough information in the mappings
+      - All of the paging structures could be allocated out of a relatively large region
+        (the "kernel allocator" which has enough space to track things efficiently and precisely)
+
+A corollary:
+
+  - What purpose do "frames" serve except as page table entries?
+  - Newer linux kernels use "folio" (closer to our untyped, i.e. power-of-2-aligned set of pages)
+    along with rmap information (see prior art). But it's much more than just 2 words, so it doesn't
+    really help us unless we allocate that sort of "shadow" information structure.
+    It's possible this is doable in a clean way.
+
+
 ## Prior art
 
-N/A, this is seL4-specific.
+~~N/A, this is seL4-specific.~~ Actually Linux has the exact same problem for swapping.
+
+This is the rmap API in Linux.
+
+Turns out some of the issues are exactly as described in this 2004 paper:
+
+https://www.kernel.org/doc/ols/2004/ols2004v2-pages-71-74.pdf
+
+> A second cost was space. In its original form
+> pte_chains cost two pointers per mapping.
+> An optimization eliminated the extra structure
+> for singly-mapped pages and another optimiza-
+> tion added multiple pointers per list entry, but
+> the space taken by the pte_chain structures
+> was still significant.
+
+... and then they used a pointer to VSpace + Vaddr implementation (more like ASID pools):
+
+> All anonmm structures are linked together by
+> fork. A new anonmm structure is allocated
+> on exec. The offset stored in struct page
+> is the virtual address of the page, while the ob-
+> ject pointer points to an anonmm that the page
+> is mapped in.
+
+then a modified version:
+
+> The basic mechanism of anon_vma is the
+> addition of an anon_vma structure linked to
+> each vma that has anonymous pages. The
+> anon_vma structure has a linked list of
+> all vmas that map that anonymous range.
+> The pointer in struct page points to the
+> anon_vma and the index is the offset into the
+> current mapping
+
+Also see: https://www.kernel.org/doc/gorman/html/understand/understand006.html
+which describes the pte_chain implementation (that relies on the slab allocator)
+and also an object-based one.
+
+https://github.com/torvalds/linux/blob/master/mm/rmap.c
+
+
+
 
 ## Unresolved questions
 
